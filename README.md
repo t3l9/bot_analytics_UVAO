@@ -73,7 +73,6 @@ pip install pywin32 comtypes
    password_NG = ваш_пароль
    login_MM = ваш_логин
    password_MM = ваш_пароль
-   
    ```
 
 6. **Подготовьте необходимые файлы:**
