@@ -4,3 +4,6 @@ openpyxl==3.1.2
 selenium==4.15.2
 webdriver-manager==4.0.1
 pywin32==306
+python-pptx
+matplotlib
+comtypes

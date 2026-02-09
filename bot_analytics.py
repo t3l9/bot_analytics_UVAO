@@ -5,19 +5,27 @@ import pandas as pd
 from datetime import datetime, timedelta
 from functools import reduce
 import re
+import tempfile
+import shutil
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.constants import ParseMode
 from dotenv import load_dotenv
 
+import logging
+
 try:
     import win32com.client
-
     WIN32COM_AVAILABLE = True
-except ImportError:
+    print("Модуль win32com успешно импортирован")
+except ImportError as e:
     WIN32COM_AVAILABLE = False
-    logger.warning("Модуль win32com не установлен. Создание сводной таблицы и PDF будет пропущено.")
+    print(f"Модуль win32com не установлен: {e}. Создание сводной таблицы и PDF будет пропущено.")
+
+from oati import (
+    get_week_dates_OATI, create_ppt_OATI, process_file_OATI
+)
 
 from week_svod import (
     parcing_data_MM_async, process_file_MM_week
@@ -998,6 +1006,12 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # Обработчик файлов от пользователя
 async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка загрузки файлов от пользователя"""
+
+    # Проверяем, если это файл для ОАТИ
+    if context.user_data.get('waiting_for_oati_file', False):
+        await handle_oati_file(update, context)
+        return
+
     if not context.user_data.get('waiting_for_file', False):
         return
 
@@ -1185,190 +1199,158 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # Обработчик создания слайда ОАТИ
 async def oati_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработка загрузки файлов от пользователя"""
-    if not context.user_data.get('waiting_for_file', False):
-        return
+    """Обработка запроса на создание слайда ОАТИ"""
+    query = update.callback_query
+    await query.answer()
 
-    if update.message.document:
-        file = await context.bot.get_file(update.message.document.file_id)
+    # Удаляем сообщение с кнопками и показываем загрузку
+    loading_msg_id = await delete_message_and_show_loading(
+        query,
+        context,
+        "🅾️ Создаю слайд ОАТИ..."
+    )
 
-        # Проверяем, что это Excel файл
-        file_name = update.message.document.file_name.lower()
-        if not (file_name.endswith('.xlsx') or file_name.endswith('.xls')):
-            await update.message.reply_text(
-                "❌ Пожалуйста, отправьте файл в формате Excel (.xlsx или .xls)",
-                parse_mode=ParseMode.MARKDOWN
-            )
-            return
+    try:
+        # Запрашиваем файл у пользователя
+        await update_loading_message(
+            query.message.chat_id,
+            loading_msg_id,
+            context,
+            "🅾️ Создаю слайд ОАТИ...\n\n📤 Пришлите выгрузку для создания слайда ОАТИ"
+        )
 
-        # Определяем директорию для загрузок
-        home_dir = os.path.expanduser("~")
-        directory = os.path.join(home_dir, "Downloads")
-        temp_dir = os.path.join(directory, 'temp')
-        os.makedirs(temp_dir, exist_ok=True)
+        # Устанавливаем состояние ожидания файла ОАТИ
+        context.user_data['waiting_for_oati_file'] = True
+        context.user_data['loading_msg_id'] = loading_msg_id
 
-        if context.user_data.get('processing_step') == 'first_file':
-            # Сохраняем файл от пользователя
-            user_file_path = os.path.join(temp_dir, 'user_file.xlsx')
+    except Exception as e:
+        logger.error(f"Ошибка в обработчике ОАТИ: {e}")
+        await update_loading_message(
+            query.message.chat_id,
+            loading_msg_id,
+            context,
+            f"❌ Ошибка: {str(e)}"
+        )
 
-            # Отправляем подтверждение получения файла
-            file_received_msg = await update.message.reply_text(
-                "✅ Файл получен. Обрабатываю данные...",
-                parse_mode=ParseMode.MARKDOWN
-            )
 
-            # Скачиваем файл от пользователя
-            await file.download_to_drive(user_file_path)
-
-            # Показываем анимацию загрузки
-            loading_msg = await update.message.reply_text("🔄 Обрабатываю данные...")
-
-            try:
-                # Получаем сохраненные даты
-                date1, date2 = context.user_data.get('dates', ('', ''))
-
-                await context.bot.edit_message_text(
-                    chat_id=update.message.chat_id,
-                    message_id=loading_msg.message_id,
-                    text="🔄 Нахожу файлы для обработки..."
-                )
-
-                # Находим последний скачанный файл с портала
-                files = os.listdir(directory)
-                excel_files = [f for f in files if f.endswith('.xlsx') or f.endswith('.xls')]
-                if not excel_files:
-                    raise Exception("Не найдены Excel файлы в папке загрузок")
-
-                # Ищем самый новый файл
-                excel_files.sort(key=lambda x: os.path.getmtime(os.path.join(directory, x)))
-                downloaded_file = excel_files[-1]
-                downloaded_file_path = os.path.join(directory, downloaded_file)
-
-                await context.bot.edit_message_text(
-                    chat_id=update.message.chat_id,
-                    message_id=loading_msg.message_id,
-                    text="⚙️ Обрабатываю файлы..."
-                )
-
-                # Обрабатываем оба файла
-                output_file_path = process_file_MM_week(user_file_path, downloaded_file_path)
-
-                await context.bot.edit_message_text(
-                    chat_id=update.message.chat_id,
-                    message_id=loading_msg.message_id,
-                    text="📤 Отправляю файл (это может занять некоторое время)..."
-                )
-
-                current_time = datetime.now().strftime('%d.%m.%Y %H:%M')
-
-                # Отправляем результат с увеличенным таймаутом
-                try:
-                    with open(output_file_path, 'rb') as f:
-                        # Используем более длинный таймаут для отправки файла
-                        await asyncio.wait_for(
-                            context.bot.send_document(
-                                chat_id=update.message.chat_id,
-                                document=InputFile(f, filename=f"Все_{date1}_{date2}.xlsx"),
-                                caption=f"📎 Еженедельный свод за период {date1}-{date2}\n(выгрузка: {current_time})"
-                            ),
-                            timeout=120.0  # 2 минуты на отправку файла
-                        )
-                except asyncio.TimeoutError:
-                    # Если отправка заняла слишком много времени, но файл все равно мог отправиться
-                    logger.warning("Таймаут при отправке файла, но операция могла завершиться успешно")
-                    # Проверяем, отправлен ли файл
-                    await update.message.reply_text(
-                        "⏳ Файл обрабатывается... Проверяю статус отправки..."
-                    )
-
-                # Удаляем сообщение о загрузке и инструкцию
-                try:
-                    # Удаляем сообщение с инструкцией отправки файла
-                    instruction_msg_id = context.user_data.get('instruction_message_id')
-                    if instruction_msg_id:
-                        await context.bot.delete_message(
-                            chat_id=update.message.chat_id,
-                            message_id=instruction_msg_id
-                        )
-                except Exception as e:
-                    logger.warning(f"Не удалось удалить сообщение с инструкцией: {e}")
-
-                try:
-                    # Удаляем сообщение о получении файла
-                    await context.bot.delete_message(
-                        chat_id=update.message.chat_id,
-                        message_id=file_received_msg.message_id
-                    )
-                except Exception as e:
-                    logger.warning(f"Не удалось удалить сообщение о получении файла: {e}")
-
-                # Удаляем сообщение о обработке
-                try:
-                    await context.bot.delete_message(
-                        chat_id=update.message.chat_id,
-                        message_id=loading_msg.message_id
-                    )
-                except Exception as e:
-                    logger.warning(f"Не удалось удалить сообщение о загрузке: {e}")
-
-                # Показываем меню
-                await update.message.reply_text(
-                    f"✅ Отчет успешно сформирован и отправлен!\n\nВыберите следующую команду:",
-                    reply_markup=MAIN_KEYBOARD
-                )
-
-                # Очищаем состояние
-                context.user_data['waiting_for_file'] = False
-                context.user_data['processing_step'] = None
-                context.user_data['dates'] = None
-                context.user_data['instruction_message_id'] = None
-
-                # Удаляем временные файлы
-                try:
-                    os.remove(user_file_path)
-                except:
-                    pass
-
-            except asyncio.TimeoutError:
-                # Обработка таймаута отдельно
-                logger.error("Таймаут при обработке файла")
-                await context.bot.edit_message_text(
-                    chat_id=update.message.chat_id,
-                    message_id=loading_msg.message_id,
-                    text="⏳ Операция заняла слишком много времени, но файл мог быть отправлен. Проверьте чат."
-                )
-
-                await update.message.reply_text(
-                    "Выберите команду:",
-                    reply_markup=MAIN_KEYBOARD
-                )
-
-                # Очищаем состояние
-                context.user_data['waiting_for_file'] = False
-                context.user_data['processing_step'] = None
-
-            except Exception as e:
-                logger.error(f"Ошибка при обработке еженедельного свода: {e}")
-                await context.bot.edit_message_text(
-                    chat_id=update.message.chat_id,
-                    message_id=loading_msg.message_id,
-                    text=f"❌ Ошибка при обработке: {str(e)[:100]}..."
-                )
-
-                await update.message.reply_text(
-                    "Выберите команду:",
-                    reply_markup=MAIN_KEYBOARD
-                )
-
-                # Очищаем состояние
-                context.user_data['waiting_for_file'] = False
-                context.user_data['processing_step'] = None
-
-    else:
+async def handle_oati_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработка файлов ОАТИ"""
+    if not update.message.document:
         await update.message.reply_text(
             '❌ Пожалуйста, отправьте документ.',
             parse_mode=ParseMode.MARKDOWN
         )
+        return
+
+    file = await context.bot.get_file(update.message.document.file_id)
+
+    # Проверяем, что это Excel файл
+    file_name = update.message.document.file_name.lower()
+    if not (file_name.endswith('.xlsx') or file_name.endswith('.xls')):
+        await update.message.reply_text(
+            "❌ Пожалуйста, отправьте файл в формате Excel (.xlsx или .xls)",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    # Получаем ID сообщения загрузки
+    loading_msg_id = context.user_data.get('loading_msg_id')
+    if not loading_msg_id:
+        loading_msg_id = await show_loading_animation(
+            update.message.chat_id,
+            context,
+            "🅾️ Обрабатываю файл ОАТИ..."
+        )
+
+    try:
+        await update_loading_message(
+            update.message.chat_id,
+            loading_msg_id,
+            context,
+            "🅾️ Обрабатываю файл ОАТИ...\n\n📥 Скачиваю файл..."
+        )
+
+        # Создаем временную директорию
+        temp_dir = os.path.join(directory, 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_file_path = os.path.join(temp_dir, f"oati_file_{datetime.now().strftime('%H%M%S')}.xlsx")
+
+        # Скачиваем файл
+        await file.download_to_drive(temp_file_path)
+
+        await update_loading_message(
+            update.message.chat_id,
+            loading_msg_id,
+            context,
+            "🅾️ Обрабатываю файл ОАТИ...\n\n⚙️ Анализирую данные..."
+        )
+
+        # Обрабатываем файл (теперь функция возвращает 3 значения)
+        ppt_path, message = process_file_OATI(temp_file_path)
+
+        await update_loading_message(
+            update.message.chat_id,
+            loading_msg_id,
+            context,
+            "🅾️ Обрабатываю файл ОАТИ...\n\n📤 Отправляю файлы..."
+        )
+
+        # Отправляем PPT файл
+        with open(ppt_path, 'rb') as ppt_file:
+            await context.bot.send_document(
+                chat_id=update.message.chat_id,
+                document=InputFile(ppt_file, filename=os.path.basename(ppt_path)),
+                caption="🅾️ Слайд ОАТИ (PowerPoint)"
+            )
+
+        # ОТПРАВЛЯЕМ СТАТИСТИЧЕСКОЕ СООБЩЕНИЕ
+        await context.bot.send_message(
+            chat_id=update.message.chat_id,
+            text=message,
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+        # Удаляем сообщение о загрузке
+        await context.bot.delete_message(
+            chat_id=update.message.chat_id,
+            message_id=loading_msg_id
+        )
+
+        # Показываем меню
+        await update.message.reply_text(
+            "✅ Слайд ОАТИ успешно создан и отправлен!\n\nВыберите следующую команду:",
+            reply_markup=MAIN_KEYBOARD
+        )
+
+        # Очищаем состояние
+        context.user_data['waiting_for_oati_file'] = False
+        context.user_data['loading_msg_id'] = None
+
+        # Удаляем временные файлы
+        try:
+            os.remove(temp_file_path)
+        except:
+            pass
+
+    except Exception as e:
+        logger.error(f"Ошибка при обработке файла ОАТИ: {e}")
+
+        if loading_msg_id:
+            await update_loading_message(
+                update.message.chat_id,
+                loading_msg_id,
+                context,
+                f"❌ Ошибка при обработке файла ОАТИ: {str(e)[:100]}..."
+            )
+
+        await update.message.reply_text(
+            "Выберите команду:",
+            reply_markup=MAIN_KEYBOARD
+        )
+
+        # Очищаем состояние
+        context.user_data['waiting_for_oati_file'] = False
+        context.user_data['loading_msg_id'] = None
 
 
 # Основная функция
@@ -1376,7 +1358,7 @@ def main() -> None:
     """Запуск бота"""
     application = Application.builder() \
         .token(TOKEN) \
-        .connect_timeout(60.0)  \
+        .connect_timeout(60.0) \
         .read_timeout(60.0) \
         .write_timeout(60.0) \
         .pool_timeout(60.0) \

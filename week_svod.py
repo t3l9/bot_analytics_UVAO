@@ -48,6 +48,11 @@ import pythoncom
 load_dotenv()
 login_MM = os.getenv("login_MM")
 password_MM = os.getenv("password_MM")
+# Получаем текущую директорию проекта
+project_dir = os.path.dirname(os.path.abspath(__file__))
+# Создаем папку data внутри проекта, если её нет
+data_dir = os.path.join(project_dir, "data")
+os.makedirs(data_dir, exist_ok=True)
 
 
 def parcing_data_MM_sync(MM_start_date, MM_end_date):
@@ -192,8 +197,7 @@ def process_file_MM_week(first_file, second_file):
         'Управа Южнопортового района': 'Южнопортовый'
     }
 
-    desktop_path = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
-    output_file_path = os.path.join(desktop_path, f'Все {report_period}.xlsx')
+    output_file_path = os.path.join(data_dir, f'Все {report_period}.xlsx')
 
     # Обработка первого файла
     def process_first_file(filepath):
