@@ -43,7 +43,7 @@
 
 1. **Клонируйте репозиторий:**
 ```bash
-git clone <repository-url>
+git clone https://github.com/t3l9/bot_analytics_UVAO
 cd bot_analytics
 ```
 
