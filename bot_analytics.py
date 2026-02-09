@@ -135,6 +135,9 @@ EXPLANATION_TEXT = """
 *📎 Еженедельный свод*
 Еженедельный свод с Монитора Мэра для презентаций
 
+*🅾️ Слайд ОАТИ*
+Создание слайда ОАТИ
+
 *❓ Объяснение команд*
 Это сообщение с объяснением всех команд
 """
@@ -146,6 +149,7 @@ MAIN_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("📈 Ответы в работе (НГ)", callback_data='ng_answers')],
     [InlineKeyboardButton("📄 Cвод МЖИ (НГ)", callback_data='mji_svod')],
     [InlineKeyboardButton("📎 Еженедельный свод", callback_data='week_svod')],
+    [InlineKeyboardButton("🅾️ Слайд ОАТИ", callback_data='oati')],
     [InlineKeyboardButton("❓ Объяснение команд", callback_data='explain')],
 ])
 
@@ -1179,6 +1183,194 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 
+# Обработчик создания слайда ОАТИ
+async def oati_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработка загрузки файлов от пользователя"""
+    if not context.user_data.get('waiting_for_file', False):
+        return
+
+    if update.message.document:
+        file = await context.bot.get_file(update.message.document.file_id)
+
+        # Проверяем, что это Excel файл
+        file_name = update.message.document.file_name.lower()
+        if not (file_name.endswith('.xlsx') or file_name.endswith('.xls')):
+            await update.message.reply_text(
+                "❌ Пожалуйста, отправьте файл в формате Excel (.xlsx или .xls)",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        # Определяем директорию для загрузок
+        home_dir = os.path.expanduser("~")
+        directory = os.path.join(home_dir, "Downloads")
+        temp_dir = os.path.join(directory, 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+
+        if context.user_data.get('processing_step') == 'first_file':
+            # Сохраняем файл от пользователя
+            user_file_path = os.path.join(temp_dir, 'user_file.xlsx')
+
+            # Отправляем подтверждение получения файла
+            file_received_msg = await update.message.reply_text(
+                "✅ Файл получен. Обрабатываю данные...",
+                parse_mode=ParseMode.MARKDOWN
+            )
+
+            # Скачиваем файл от пользователя
+            await file.download_to_drive(user_file_path)
+
+            # Показываем анимацию загрузки
+            loading_msg = await update.message.reply_text("🔄 Обрабатываю данные...")
+
+            try:
+                # Получаем сохраненные даты
+                date1, date2 = context.user_data.get('dates', ('', ''))
+
+                await context.bot.edit_message_text(
+                    chat_id=update.message.chat_id,
+                    message_id=loading_msg.message_id,
+                    text="🔄 Нахожу файлы для обработки..."
+                )
+
+                # Находим последний скачанный файл с портала
+                files = os.listdir(directory)
+                excel_files = [f for f in files if f.endswith('.xlsx') or f.endswith('.xls')]
+                if not excel_files:
+                    raise Exception("Не найдены Excel файлы в папке загрузок")
+
+                # Ищем самый новый файл
+                excel_files.sort(key=lambda x: os.path.getmtime(os.path.join(directory, x)))
+                downloaded_file = excel_files[-1]
+                downloaded_file_path = os.path.join(directory, downloaded_file)
+
+                await context.bot.edit_message_text(
+                    chat_id=update.message.chat_id,
+                    message_id=loading_msg.message_id,
+                    text="⚙️ Обрабатываю файлы..."
+                )
+
+                # Обрабатываем оба файла
+                output_file_path = process_file_MM_week(user_file_path, downloaded_file_path)
+
+                await context.bot.edit_message_text(
+                    chat_id=update.message.chat_id,
+                    message_id=loading_msg.message_id,
+                    text="📤 Отправляю файл (это может занять некоторое время)..."
+                )
+
+                current_time = datetime.now().strftime('%d.%m.%Y %H:%M')
+
+                # Отправляем результат с увеличенным таймаутом
+                try:
+                    with open(output_file_path, 'rb') as f:
+                        # Используем более длинный таймаут для отправки файла
+                        await asyncio.wait_for(
+                            context.bot.send_document(
+                                chat_id=update.message.chat_id,
+                                document=InputFile(f, filename=f"Все_{date1}_{date2}.xlsx"),
+                                caption=f"📎 Еженедельный свод за период {date1}-{date2}\n(выгрузка: {current_time})"
+                            ),
+                            timeout=120.0  # 2 минуты на отправку файла
+                        )
+                except asyncio.TimeoutError:
+                    # Если отправка заняла слишком много времени, но файл все равно мог отправиться
+                    logger.warning("Таймаут при отправке файла, но операция могла завершиться успешно")
+                    # Проверяем, отправлен ли файл
+                    await update.message.reply_text(
+                        "⏳ Файл обрабатывается... Проверяю статус отправки..."
+                    )
+
+                # Удаляем сообщение о загрузке и инструкцию
+                try:
+                    # Удаляем сообщение с инструкцией отправки файла
+                    instruction_msg_id = context.user_data.get('instruction_message_id')
+                    if instruction_msg_id:
+                        await context.bot.delete_message(
+                            chat_id=update.message.chat_id,
+                            message_id=instruction_msg_id
+                        )
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить сообщение с инструкцией: {e}")
+
+                try:
+                    # Удаляем сообщение о получении файла
+                    await context.bot.delete_message(
+                        chat_id=update.message.chat_id,
+                        message_id=file_received_msg.message_id
+                    )
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить сообщение о получении файла: {e}")
+
+                # Удаляем сообщение о обработке
+                try:
+                    await context.bot.delete_message(
+                        chat_id=update.message.chat_id,
+                        message_id=loading_msg.message_id
+                    )
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить сообщение о загрузке: {e}")
+
+                # Показываем меню
+                await update.message.reply_text(
+                    f"✅ Отчет успешно сформирован и отправлен!\n\nВыберите следующую команду:",
+                    reply_markup=MAIN_KEYBOARD
+                )
+
+                # Очищаем состояние
+                context.user_data['waiting_for_file'] = False
+                context.user_data['processing_step'] = None
+                context.user_data['dates'] = None
+                context.user_data['instruction_message_id'] = None
+
+                # Удаляем временные файлы
+                try:
+                    os.remove(user_file_path)
+                except:
+                    pass
+
+            except asyncio.TimeoutError:
+                # Обработка таймаута отдельно
+                logger.error("Таймаут при обработке файла")
+                await context.bot.edit_message_text(
+                    chat_id=update.message.chat_id,
+                    message_id=loading_msg.message_id,
+                    text="⏳ Операция заняла слишком много времени, но файл мог быть отправлен. Проверьте чат."
+                )
+
+                await update.message.reply_text(
+                    "Выберите команду:",
+                    reply_markup=MAIN_KEYBOARD
+                )
+
+                # Очищаем состояние
+                context.user_data['waiting_for_file'] = False
+                context.user_data['processing_step'] = None
+
+            except Exception as e:
+                logger.error(f"Ошибка при обработке еженедельного свода: {e}")
+                await context.bot.edit_message_text(
+                    chat_id=update.message.chat_id,
+                    message_id=loading_msg.message_id,
+                    text=f"❌ Ошибка при обработке: {str(e)[:100]}..."
+                )
+
+                await update.message.reply_text(
+                    "Выберите команду:",
+                    reply_markup=MAIN_KEYBOARD
+                )
+
+                # Очищаем состояние
+                context.user_data['waiting_for_file'] = False
+                context.user_data['processing_step'] = None
+
+    else:
+        await update.message.reply_text(
+            '❌ Пожалуйста, отправьте документ.',
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+
 # Основная функция
 def main() -> None:
     """Запуск бота"""
@@ -1197,6 +1389,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(ng_answers_handler, pattern='^ng_answers$'))
     application.add_handler(CallbackQueryHandler(mm_monitor_handler, pattern='^mm_monitor$'))
     application.add_handler(CallbackQueryHandler(week_svod_handler, pattern='^week_svod$'))
+    application.add_handler(CallbackQueryHandler(oati_handler, pattern='^oati$'))
     application.add_handler(CallbackQueryHandler(mji_svod_handler, pattern='^mji_svod$'))
 
     # Обработчики для еженедельного свода
