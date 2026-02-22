@@ -79,7 +79,7 @@ pip install pywin32 comtypes
 
 ```
 bot_analytics/
-├── main.py                    # Основной файл Telegram бота
+├── bot_analytics.py                    # Основной файл Telegram бота
 ├── oati.py                    # Модуль для создания слайдов ОАТИ
 ├── week_svod.py               # Модуль еженедельных сводов
 ├── mji_svod.py                # Модуль сводов МЖИ
