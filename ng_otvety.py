@@ -20,6 +20,7 @@ import win32com.client
 from functools import reduce
 import pythoncom
 from dotenv import load_dotenv
+from functools import reduce
 
 excluded_dates = [
     # Ваши исходные даты 2025 года
@@ -113,28 +114,16 @@ def choosing_time_NG():
 def process_ng_prosroki_file(timenow, filepath, excluded_dates):
     user_input = choosing_day(excluded_dates)
     df = pd.read_excel(filepath)
+
+    # Очистка секунд в датах
     df['Регламентный срок у сообщения (Портал)'] = df['Регламентный срок у сообщения (Портал)'].apply(
         lambda x: x.replace(second=0))
-    df = df[df['Регламентный срок у сообщения (Портал)'] <= pd.to_datetime(
-        user_input)]  # оставляем только те сообщения, котоыре меньше или равны заданной даты
+
+    # Фильтр по дате ввода
+    df = df[df['Регламентный срок у сообщения (Портал)'] <= pd.to_datetime(user_input)]
     today = datetime.now()
 
-    # условие для выделения просрочек ЛК ПРЕФЕКТА
-    condition = (df['Ответственный за подготовку ответа'].str.contains('Префектура Юго-Восточного округа')) & (
-            df['Регламентный срок у сообщения (Портал)'] < today)
-    prefect = df[condition]
-    # cоздаем сводную таблицу для префекта просрочек
-    pivot_prefect = pd.pivot_table(prefect, values='Номер заявки', index='Район', aggfunc='count')
-    pivot_prefect = pivot_prefect.rename(columns={'Номер заявки': 'Кабинет префекта просрочки'})
-    if pivot_prefect.empty:
-        pivot_prefect = pd.DataFrame(
-            index=['АВД ЮВАО', 'Выхино-Жулебино', 'Капотня', "Кузьминки", "Лефортово", 'Люблино', 'Марьино',
-                   'Некрасовка', 'Нижегородский', 'Печатники', 'Рязанский', 'Текстильщики', 'Южнопортовый']
-            , columns=['Кабинет префекта просрочки'])
-    print(pivot_prefect)
-
-    # выбрасываем просрочки префекта, а также все, что связанно с перефектурой за датафрейм
-    df = df[~df['Ответственный за подготовку ответа'].str.contains('Префектура Юго-Восточного округа')]
+    # --- ИЗМЕНЕНИЕ НАЧАЛО: Маппинг применяется ДО разделения на префекта и основной df ---
     responsible_mapping = {
         'ГБУ «Автомобильные дороги ЮВАО»': 'АВД ЮВАО',
         'ГБУ Жилищник Выхино района Выхино-Жулебино города Москвы': 'Выхино-Жулебино',
@@ -162,7 +151,35 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
         'ГБУ Жилищник Южнопортового района города Москвы': 'Южнопортовый',
         'Управа Южнопортовый': 'Южнопортовый'
     }
-    df['Район'] = df['Ответственный за подготовку ответа'].map(responsible_mapping)
+
+    # Создаем столбец 'Район' для ВСЕХ записей сразу по маппингу
+    df['Район'] = df['Ответственный ОИВ первого уровня'].map(responsible_mapping)
+    # --- ИЗМЕНЕНИЕ КОНЕЦ ---
+
+    # условие для выделения просрочек ЛК ПРЕФЕКТА
+    # (Фильтруем по столбцу Ответственный, но столбец Район уже создан по маппингу)
+    condition = (df['Ответственный за подготовку ответа'].str.contains('Префектура Юго-Восточного округа')) & (
+            df['Регламентный срок у сообщения (Портал)'] < today)
+    prefect = df[condition].copy()  # .copy() чтобы избежать SettingWithCopyWarning
+
+    # cоздаем сводную таблицу для префекта просрочек
+    # Теперь индекс 'Район' точно существует и заполнен согласно маппингу
+    pivot_prefect = pd.pivot_table(prefect, values='Номер заявки', index='Район', aggfunc='count')
+    pivot_prefect = pivot_prefect.rename(columns={'Номер заявки': 'Кабинет префекта просрочки'})
+
+    if pivot_prefect.empty:
+        pivot_prefect = pd.DataFrame(
+            index=['АВД ЮВАО', 'Выхино-Жулебино', 'Капотня', "Кузьминки", "Лефортово", 'Люблино', 'Марьино',
+                   'Некрасовка', 'Нижегородский', 'Печатники', 'Рязанский', 'Текстильщики', 'Южнопортовый']
+            , columns=['Кабинет префекта просрочки'])
+    print(pivot_prefect)
+
+    # выбрасываем просрочки префекта, а также все, что связанно с перефектурой за датафрейм
+    # (Основной df очищается от строк префектуры для дальнейшей обработки)
+    df = df[~df['Ответственный за подготовку ответа'].str.contains('Префектура Юго-Восточного округа')]
+
+    # (Словарь responsible_mapping теперь не нужен здесь, так как применен выше)
+
     # устанавливаем формат даты
     excluded_dates_with_time = [
         datetime.strptime(date_str, "%d.%m.%Y").replace(hour=23, minute=59, second=0)
@@ -170,13 +187,11 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
     ]
     excluded_dates_dt = pd.to_datetime(excluded_dates_with_time)
     excluded_date = [datetime.strptime(date, "%d.%m.%Y").date() for date in excluded_dates]
-    # df['Регламентный срок у сообщения (Портал)'] = pd.to_datetime(df['Регламентный срок у сообщения (Портал)'])
+
     main_df = df.copy()
 
-    # Фильтруем датафрейм, исключая даты из excluded_dates
-    # main_df['Регламентный срок у сообщения (Портал)'] = pd.to_datetime(main_df['Регламентный срок у сообщения (Портал)'])
-
     def change_status(df):
+        df = df.copy()
         df.loc[:, "Статус подготовки ответа на сообщение"] = df["Статус подготовки ответа на сообщение"].replace(
             "Готовится ответ", "Готовится ответ (ОИВ взял доп. срок)")
         df.loc[:, "Статус подготовки ответа на сообщение"] = df["Статус подготовки ответа на сообщение"].replace(
@@ -190,17 +205,21 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
         return df
 
     def table_is_none(date, number):
-        df = pd.DataFrame(
+        df_empty = pd.DataFrame(
             index=['АВД ЮВАО', 'Выхино-Жулебино', 'Капотня', "Кузьминки", "Лефортово", 'Люблино', 'Марьино',
                    'Некрасовка', 'Нижегородский', 'Печатники', 'Рязанский', 'Текстильщики', 'Южнопортовый']
             , columns=[f'{number} день ({date.strftime('%d.%m')})']).fillna(0)
         print(f"{number}-й день пустой")
-        return df
+        return df_empty
 
     def crearing_day_in_svod(df, date, number):
         new_date = date + timedelta(days=1)
         while new_date in excluded_date:
             new_date += timedelta(days=1)
+        # Проверка на пустой df перед операцией .dt.date
+        if df.empty:
+            return table_is_none(new_date, number), new_date
+
         df_date = change_status(df[df['Регламентный срок у сообщения (Портал)'].dt.date == new_date])
         pivot_date_for_svod = pd.pivot_table(df_date, values='Номер заявки', index='Район', aggfunc='count')
         new_name = f'{number} день ({new_date.strftime('%d.%m')})'
@@ -212,35 +231,46 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
         return pivot_date_for_svod, new_date
 
     # 8-й день
-    today = datetime.now().date()
-    day_8 = today
-    # если дата в выходных, то идти дальше, присваивая 8-му дню след дату
+    today_date = datetime.now().date()
+    day_8 = today_date
     while day_8 in excluded_date:
         day_8 += timedelta(days=1)
-    df_date_8 = change_status(main_df[main_df['Регламентный срок у сообщения (Портал)'].dt.date == day_8])
+
+    # Проверка на пустой main_df
+    if not main_df.empty:
+        df_date_8 = change_status(main_df[main_df['Регламентный срок у сообщения (Портал)'].dt.date == day_8])
+    else:
+        df_date_8 = pd.DataFrame(columns=main_df.columns)
+
     pivot8_dlya_svoda = pd.pivot_table(df_date_8, values='Номер заявки', index='Район', aggfunc='count')
     new_name = f'{8} день ({day_8.strftime('%d.%m')})'
     if not pivot8_dlya_svoda.empty:
         pivot8_dlya_svoda.rename(columns={pivot8_dlya_svoda.columns[-1]: new_name}, inplace=True)
+
     pivot_8 = pd.pivot_table(df_date_8, values='Номер заявки', index='Район',
                              columns="Статус подготовки ответа на сообщение", aggfunc='count', margins=True)
-    # pivot_8 = pivot_8.fillna(0).astype("int")
+
     if not pivot_8.empty:
         new_name = 'Всего'
         pivot_8.rename(columns={pivot_8.columns[-1]: new_name}, inplace=True)
-        # Замена названия последней строки
         pivot_8.rename(index={pivot_8.index[-1]: new_name}, inplace=True)
     else:
-        pivot8_dlya_svoda = table_is_none(day_8, 8)
+        # Если pivot_8 пустой, pivot8_dlya_svoda мог быть обработан выше, но на всякий случай
+        if pivot8_dlya_svoda.empty:
+            pivot8_dlya_svoda = table_is_none(day_8, 8)
 
     # 7-й день
     day_7 = day_8 + timedelta(days=1)
     while day_7 in excluded_date:
         day_7 += timedelta(days=1)
-    df_date_7 = change_status(main_df[main_df['Регламентный срок у сообщения (Портал)'].dt.date == day_7])
+
+    if not main_df.empty:
+        df_date_7 = change_status(main_df[main_df['Регламентный срок у сообщения (Портал)'].dt.date == day_7])
+    else:
+        df_date_7 = pd.DataFrame(columns=main_df.columns)
+
     pivot_7 = pd.pivot_table(df_date_7, values='Номер заявки', index='Район',
                              columns="Статус подготовки ответа на сообщение", aggfunc='count', margins=True)
-    # pivot_7 = pivot_7.fillna(0).astype("int")
 
     pivot7_dlya_svoda = pd.pivot_table(df_date_7, values='Номер заявки', index='Район', aggfunc='count')
     new_name = f'{7} день ({day_7.strftime('%d.%m')})'
@@ -249,16 +279,21 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
     if not pivot_7.empty:
         new_name = 'Всего'
         pivot_7.rename(columns={pivot_7.columns[-1]: new_name}, inplace=True)
-        # Замена названия последней строки
         pivot_7.rename(index={pivot_7.index[-1]: new_name}, inplace=True)
     else:
-        pivot7_dlya_svoda = table_is_none(day_7, 7)
+        if pivot7_dlya_svoda.empty:
+            pivot7_dlya_svoda = table_is_none(day_7, 7)
 
     # 6-й день
     day_6 = day_7 + timedelta(days=1)
     while day_6 in excluded_date:
         day_6 += timedelta(days=1)
-    df_date_6 = change_status(main_df[main_df['Регламентный срок у сообщения (Портал)'].dt.date == day_6])
+
+    if not main_df.empty:
+        df_date_6 = change_status(main_df[main_df['Регламентный срок у сообщения (Портал)'].dt.date == day_6])
+    else:
+        df_date_6 = pd.DataFrame(columns=main_df.columns)
+
     pivot_6 = pd.pivot_table(df_date_6, values='Номер заявки', index='Район',
                              columns="Статус подготовки ответа на сообщение", aggfunc='count', margins=True)
 
@@ -269,16 +304,21 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
     if not pivot_6.empty:
         new_name = 'Всего'
         pivot_6.rename(columns={pivot_6.columns[-1]: new_name}, inplace=True)
-        # Замена названия последней строки
         pivot_6.rename(index={pivot_6.index[-1]: new_name}, inplace=True)
     else:
-        pivot6_dlya_svoda = table_is_none(day_6, 6)
+        if pivot6_dlya_svoda.empty:
+            pivot6_dlya_svoda = table_is_none(day_6, 6)
 
     # 5-й день
     day_5 = day_6 + timedelta(days=1)
     while day_5 in excluded_date:
         day_5 += timedelta(days=1)
-    df_date_5 = change_status(main_df[main_df['Регламентный срок у сообщения (Портал)'].dt.date == day_5])
+
+    if not main_df.empty:
+        df_date_5 = change_status(main_df[main_df['Регламентный срок у сообщения (Портал)'].dt.date == day_5])
+    else:
+        df_date_5 = pd.DataFrame(columns=main_df.columns)
+
     pivot_5 = pd.pivot_table(df_date_5, values='Номер заявки', index='Район',
                              columns="Статус подготовки ответа на сообщение", aggfunc='count', margins=True)
 
@@ -289,17 +329,24 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
     if not pivot_5.empty:
         new_name = 'Всего'
         pivot_5.rename(columns={pivot_5.columns[-1]: new_name}, inplace=True)
-        # Замена названия последней строки
         pivot_5.rename(index={pivot_5.index[-1]: new_name}, inplace=True)
     else:
-        pivot5_dlya_svoda = table_is_none(day_5, 5)
+        if pivot5_dlya_svoda.empty:
+            pivot5_dlya_svoda = table_is_none(day_5, 5)
+
     # остальные дни
+    # Передаем main_df, который уже имеет столбец 'Район'
     pivot4_dlya_svoda, date4 = crearing_day_in_svod(main_df, day_5, 4)
     pivot3_dlya_svoda, date3 = crearing_day_in_svod(main_df, date4, 3)
     pivot2_dlya_svoda, date2 = crearing_day_in_svod(main_df, date3, 2)
     pivot1_dlya_svoda, date1 = crearing_day_in_svod(main_df, date2, 1)
+
     # таблицы для просрочек
-    prosrok = main_df[main_df['Регламентный срок у сообщения (Портал)'].dt.date < today]
+    if not main_df.empty:
+        prosrok = main_df[main_df['Регламентный срок у сообщения (Портал)'].dt.date < today_date]
+    else:
+        prosrok = pd.DataFrame(columns=main_df.columns)
+
     prosrok_for_svod = pd.pivot_table(prosrok, values='Номер заявки', index='Район', aggfunc='count')
     prosrok_for_svod = prosrok_for_svod.rename(columns={'Номер заявки': 'Просрочки'})
     if prosrok_for_svod.empty:
@@ -307,15 +354,17 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
             index=['АВД ЮВАО', 'Выхино-Жулебино', 'Капотня', "Кузьминки", "Лефортово", 'Люблино', 'Марьино',
                    'Некрасовка', 'Нижегородский', 'Печатники', 'Рязанский', 'Текстильщики', 'Южнопортовый']
             , columns=['Просрочки']).fillna(0)
+
     df_prosrok = change_status(prosrok)
-    pivot_prosrok = pd.pivot_table(df_prosrok, values='Номер заявки', index='Район',
-                                   columns="Статус подготовки ответа на сообщение", aggfunc='count', margins=True)
-    # pivot_prosrok.fillna(0).astype("int")
-    # замена all
+    if not df_prosrok.empty:
+        pivot_prosrok = pd.pivot_table(df_prosrok, values='Номер заявки', index='Район',
+                                       columns="Статус подготовки ответа на сообщение", aggfunc='count', margins=True)
+    else:
+        pivot_prosrok = pd.DataFrame()
+
     if not pivot_prosrok.empty:
         new_name = 'Всего'
         pivot_prosrok.rename(columns={pivot_prosrok.columns[-1]: new_name}, inplace=True)
-        # Замена названия последней строки
         pivot_prosrok.rename(index={pivot_prosrok.index[-1]: new_name}, inplace=True)
     else:
         print("Просроки пустые")
@@ -328,31 +377,28 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
 
     dfs = [prosrok_for_svod, pivot8_dlya_svoda, pivot7_dlya_svoda, pivot6_dlya_svoda, pivot5_dlya_svoda,
            pivot4_dlya_svoda, pivot3_dlya_svoda, pivot2_dlya_svoda, pivot1_dlya_svoda]
-    # Объединение всех датафреймов по ключу
-    # merged_df = reduce(lambda left, right: pd.merge(left, right, on = "Район", how='outer'), dfs)
+
     merged_df = reduce(lambda left, right: pd.merge(left, right, left_index=True, right_index=True, how='outer'), dfs)
     merged_table = pd.merge(pivot_prefect, merged_df, left_index=True, right_index=True, how='outer').fillna(0)
-    all_in_work = pd.DataFrame({'Всего в работе': merged_table.sum(axis=1)}).fillna(0)  # столбец всего в работе
+    all_in_work = pd.DataFrame({'Всего в работе': merged_table.sum(axis=1)}).fillna(0)
     all_urgent = pd.DataFrame({'Всего срочных': merged_table.iloc[:, :6].sum(axis=1)}).fillna(0)
-    # мерджим все в финальную таблицу
+
     final_svod = pd.merge(all_in_work, pivot_prefect, left_index=True, right_index=True, how='outer').fillna(0)
     final_svod = pd.merge(final_svod, all_urgent, left_index=True, right_index=True, how='outer').fillna(0)
     final_svod = pd.merge(final_svod, merged_df, left_index=True, right_index=True, how='outer').fillna(0)
-    # сортируем по столбцу со срочными
     final_svod = final_svod.sort_values(by='Всего срочных', ascending=False)
-    # добавляем итог
+
     totals_row = final_svod.sum(axis=0)
     totals_row.name = 'Итог по округу'
     df_totals = pd.DataFrame(totals_row).T
     df_with_totals = pd.concat([final_svod, df_totals])
-    # дополнительно переименовывем и сохраняем с наванием и нужной датой
     df_with_totals.index.name = 'Ответственный за подготовку ответа'
 
     # сохраняем по пути и добавляем листы
+    # Убедитесь, что переменная directory определена в глобальной области видимости
     processed_file_path = os.path.join(directory,
                                        f"Ответы в работе_{datetime.now().strftime('%d.%m')}_на_{timenow}.xlsx")
-    df.to_excel(processed_file_path, index=False)
-    # cохраняем файлы
+
     with pd.ExcelWriter(processed_file_path, engine='openpyxl') as writer:
         df_with_totals.to_excel(writer, sheet_name='СВОД', index=True, startrow=2)
         pivot_prosrok.to_excel(writer, sheet_name='просрочки', index=True, startrow=2)
@@ -362,7 +408,9 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
         pivot_5.to_excel(writer, sheet_name='5-й день', index=True, startrow=2)
         main_df.to_excel(writer, sheet_name='Ответы в работе', index=False, startrow=0)
         holidays_df.to_excel(writer, sheet_name='Выходные', index=False, startrow=0)
+        # Теперь в листе Префект просрок столбец Район соответствует маппингу
         prefect.to_excel(writer, sheet_name='Префект просрок', index=False, startrow=0)
+
     return processed_file_path
 
 
