@@ -647,6 +647,9 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
 
+    # Сохраняем chat_id до удаления сообщения
+    chat_id = query.message.chat_id
+
     # Удаляем сообщение с кнопками и показываем загрузку
     loading_msg_id = await delete_message_and_show_loading(
         query,
@@ -660,23 +663,29 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         # Шаг 1: Выгрузка данных
         await update_loading_message(
-            query.message.chat_id,
+            chat_id,  # Используем сохраненный chat_id
             loading_msg_id,
             context,
             "📊 Загружаю отчет 'Монитор в работе'...\n\n📥 Выполняется выгрузка данных..."
         )
 
-        success = await parcing_data_MM(context, query.message.chat_id, MM_start_date, MM_end_date)
+        success = await parcing_data_MM(context, chat_id, MM_start_date, MM_end_date)
         if not success:
             await context.bot.delete_message(
-                chat_id=query.message.chat_id,
+                chat_id=chat_id,
                 message_id=loading_msg_id
+            )
+            # Показываем новую клавиатуру (используем chat_id)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Выберите команду:",
+                reply_markup=MAIN_KEYBOARD
             )
             return
 
         # Шаг 2: Обработка файла
         await update_loading_message(
-            query.message.chat_id,
+            chat_id,
             loading_msg_id,
             context,
             "📊 Загружаю отчет 'Монитор в работе'...\n\n⚙️ Обрабатываю данные..."
@@ -697,7 +706,7 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Шаг 3: Отправка файлов
         current_time = datetime.now().strftime('%d.%m.%Y %H:%M')
         await update_loading_message(
-            query.message.chat_id,
+            chat_id,
             loading_msg_id,
             context,
             "📊 Загружаю отчет 'Монитор в работе'...\n\n📤 Отправляю файлы..."
@@ -706,30 +715,31 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Отправляем PDF
         with open(pdf_path, 'rb') as pdf_file:
             await context.bot.send_document(
-                chat_id=query.message.chat_id,
+                chat_id=chat_id,
                 document=InputFile(pdf_file,
-                                   filename=f"Монитор_в_работе_{timenow}_{datetime.now().strftime('%d.%m.%y_%H-%M')}.pdf"),
+                                 filename=f"Монитор_в_работе_{timenow}_{datetime.now().strftime('%d.%m.%y_%H-%M')}.pdf"),
                 caption=f"📊 Отчет 'Монитор в работе' (выгрузка: {current_time})"
             )
 
         # Отправляем Excel
         with open(processed_file_path, 'rb') as excel_file:
             await context.bot.send_document(
-                chat_id=query.message.chat_id,
+                chat_id=chat_id,
                 document=InputFile(excel_file,
-                                   filename=f"Монитор_в_работе_{timenow}_{datetime.now().strftime('%d.%m.%y_%H-%M')}.xlsx"),
+                                 filename=f"Монитор_в_работе_{timenow}_{datetime.now().strftime('%d.%m.%y_%H-%M')}.xlsx"),
                 caption=f"📋 Полный отчет в Excel (выгрузка: {current_time})"
             )
 
         # Удаляем сообщение о загрузке
         await context.bot.delete_message(
-            chat_id=query.message.chat_id,
+            chat_id=chat_id,
             message_id=loading_msg_id
         )
 
-        # Показываем меню
-        await query.message.reply_text(
-            "✅ Отчет успешно сформирован и отправлен!\n\nВыберите следующую команду:",
+        # Показываем меню (используем bot.send_message вместо query.message.reply_text)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="✅ Отчет успешно сформирован и отправлен!\n\nВыберите следующую команду:",
             reply_markup=MAIN_KEYBOARD
         )
 
@@ -738,7 +748,7 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         # Обновляем сообщение об ошибке
         await update_loading_message(
-            query.message.chat_id,
+            chat_id,
             loading_msg_id,
             context,
             f"❌ <b>Ошибка при обработке 'Монитор в работе':</b>\n<code>{str(e)}</code>"
@@ -747,12 +757,14 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Ждем и показываем меню
         await asyncio.sleep(5)
         await context.bot.delete_message(
-            chat_id=query.message.chat_id,
+            chat_id=chat_id,
             message_id=loading_msg_id
         )
 
-        await query.message.reply_text(
-            "Выберите команду:",
+        # Используем bot.send_message вместо query.message.reply_text
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Выберите команду:",
             reply_markup=MAIN_KEYBOARD
         )
 
