@@ -162,8 +162,20 @@ MAIN_KEYBOARD = InlineKeyboardMarkup([
 ])
 
 
+def get_user_name(user):
+    """Получает имя пользователя для отображения"""
+    if user.username:
+        return f"@{user.username}"
+    elif user.first_name:
+        return user.first_name
+    else:
+        return f"пользователь {user.id}"
+
+
 async def delete_message_and_show_loading(query, context, loading_text="🔄 Загрузка данных..."):
-    """Удаляет сообщение с кнопками и показывает анимацию загрузки"""
+    """Удаляет сообщение с кнопками и показывает анимацию загрузки с именем пользователя"""
+    user_name = get_user_name(query.from_user)
+    
     # Сначала удаляем сообщение с кнопками
     try:
         await query.message.delete()
@@ -174,7 +186,7 @@ async def delete_message_and_show_loading(query, context, loading_text="🔄 З�
     loading_msg_id = await show_loading_animation(
         query.message.chat_id,
         context,
-        loading_text
+        f"{loading_text}\n👤 Запрос от {user_name}"
     )
     return loading_msg_id
 
@@ -210,8 +222,10 @@ async def update_loading_message(chat_id: int, message_id: int, context: Context
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start"""
     user = update.effective_user
+    user_name = get_user_name(user)
+    
     welcome_text = f"""
-👋 Привет, {user.first_name}!
+👋 Привет, {user_name}!
 
 Выберите команду из меню ниже:
     """
@@ -250,13 +264,14 @@ async def explain_commands(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def lk_prefekt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка запроса на отчет ЛК Префекта (все районы)"""
     query = update.callback_query
+    user_name = get_user_name(query.from_user)
     await query.answer()
 
     # Удаляем сообщение с кнопками и показываем загрузку
     loading_msg_id = await delete_message_and_show_loading(
         query,
         context,
-        "🏢 Загружаю отчет ЛК Префекта (все районы)..."
+        f"🏢 Загружаю отчет ЛК Префекта (все районы)..."
     )
 
     try:
@@ -265,7 +280,7 @@ async def lk_prefekt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             query.message.chat_id,
             loading_msg_id,
             context,
-            "🏢 Загружаю отчет ЛК Префекта (все районы)...\n\n📥 Выполняется выгрузка данных..."
+            f"🏢 Загружаю отчет ЛК Префекта (все районы)...\n👤 Запрос от {user_name}\n\n📥 Выполняется выгрузка данных..."
         )
 
         # Выполняем парсинг данных
@@ -288,7 +303,7 @@ async def lk_prefekt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             query.message.chat_id,
             loading_msg_id,
             context,
-            "🏢 Загружаю отчет ЛК Префекта (все районы)...\n\n⚙️ Обрабатываю данные..."
+            f"🏢 Загружаю отчет ЛК Префекта (все районы)...\n👤 Запрос от {user_name}\n\n⚙️ Обрабатываю данные..."
         )
 
         # Находим последний загруженный файл - С ИСПРАВЛЕНИЕМ!
@@ -328,7 +343,7 @@ async def lk_prefekt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 query.message.chat_id,
                 loading_msg_id,
                 context,
-                "❌ Ошибка при обработке файла ЛК Префекта!\nВозможно, файл пуст или поврежден."
+                f"❌ Ошибка при обработке файла ЛК Префекта!\n👤 Запрос от {user_name}\n\nВозможно, файл пуст или поврежден."
             )
             await asyncio.sleep(3)
             await context.bot.delete_message(
@@ -348,7 +363,7 @@ async def lk_prefekt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             query.message.chat_id,
             loading_msg_id,
             context,
-            "🏢 Загружаю отчет ЛК Префекта (все районы)...\n\n📤 Отправляю файл..."
+            f"🏢 Загружаю отчет ЛК Префекта (все районы)...\n👤 Запрос от {user_name}\n\n📤 Отправляю файл..."
         )
 
         # Проверяем существование файла перед отправкой
@@ -370,10 +385,10 @@ async def lk_prefekt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             message_id=loading_msg_id
         )
 
-        # Показываем новую клавиатуру
+        # Показываем новую клавиатуру с именем пользователя
         await context.bot.send_message(
             chat_id=query.message.chat_id,
-            text=f"✅ Отчет успешно сформирован и отправлен! (время выгрузки: {current_time})\n\nВыберите следующую команду:",
+            text=f"✅ Отчет успешно сформирован и отправлен для {user_name}!\n(время выгрузки: {current_time})\n\nВыберите следующую команду:",
             reply_markup=MAIN_KEYBOARD
         )
 
@@ -383,6 +398,7 @@ async def lk_prefekt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Более подробное сообщение об ошибке
         error_details = f"""
 ❌ <b>Ошибка при обработке ЛК Префекта:</b>
+👤 Запрос от {user_name}
 <code>{str(e)}</code>
 
 <b>Возможные причины:</b>
@@ -419,13 +435,14 @@ async def lk_prefekt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def ng_answers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка запроса на отчет 'Ответы в работе'"""
     query = update.callback_query
+    user_name = get_user_name(query.from_user)
     await query.answer()
 
     # Удаляем сообщение с кнопками и показываем загрузку
     loading_msg_id = await delete_message_and_show_loading(
         query,
         context,
-        "📈 Загружаю отчет 'Ответы в работе'..."
+        f"📈 Загружаю отчет 'Ответы в работе'..."
     )
 
     try:
@@ -434,7 +451,7 @@ async def ng_answers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             query.message.chat_id,
             loading_msg_id,
             context,
-            "📈 Загружаю отчет 'Ответы в работе'...\n\n📥 Выполняется выгрузка данных с портала..."
+            f"📈 Загружаю отчет 'Ответы в работе'...\n👤 Запрос от {user_name}\n\n📥 Выполняется выгрузка данных с портала..."
         )
 
         success = await parcing_data(context, query.message.chat_id)
@@ -456,7 +473,7 @@ async def ng_answers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             query.message.chat_id,
             loading_msg_id,
             context,
-            "📈 Загружаю отчет 'Ответы в работе'...\n\n⚙️ Обрабатываю данные..."
+            f"📈 Загружаю отчет 'Ответы в работе'...\n👤 Запрос от {user_name}\n\n⚙️ Обрабатываю данные..."
         )
 
         # Находим последний загруженный файл - С ИСПРАВЛЕНИЕМ!
@@ -492,7 +509,7 @@ async def ng_answers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             query.message.chat_id,
             loading_msg_id,
             context,
-            "📈 Загружаю отчет 'Ответы в работе'...\n\n🎨 Применяю форматирование..."
+            f"📈 Загружаю отчет 'Ответы в работе'...\n👤 Запрос от {user_name}\n\n🎨 Применяю форматирование..."
         )
 
         # Применяем форматирование ко всем таблицам
@@ -508,7 +525,7 @@ async def ng_answers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             query.message.chat_id,
             loading_msg_id,
             context,
-            "📈 Загружаю отчет 'Ответы в работе'...\n\n📄 Создаю финальные документы..."
+            f"📈 Загружаю отчет 'Ответы в работе'...\n👤 Запрос от {user_name}\n\n📄 Создаю финальные документы..."
         )
 
         pdf_path, first_sheet_file_path, full_file_path = add_run_delete_and_save_files(timenow)
@@ -519,7 +536,7 @@ async def ng_answers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             query.message.chat_id,
             loading_msg_id,
             context,
-            "📈 Загружаю отчет 'Ответы в работе'...\n\n📤 Отправляю файлы..."
+            f"📈 Загружаю отчет 'Ответы в работе'...\n👤 Запрос от {user_name}\n\n📤 Отправляю файлы..."
         )
 
         # 1. Отправляем PDF
@@ -575,10 +592,10 @@ async def ng_answers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             message_id=loading_msg_id
         )
 
-        # Показываем новую клавиатуру
+        # Показываем новую клавиатуру с именем пользователя
         await context.bot.send_message(
             chat_id=query.message.chat_id,
-            text=f"✅ Отчет успешно сформирован и отправлен! (время выгрузки: {current_time})\n\nВыберите следующую команду:",
+            text=f"✅ Отчет успешно сформирован и отправлен для {user_name}!\n(время выгрузки: {current_time})\n\nВыберите следующую команду:",
             reply_markup=MAIN_KEYBOARD
         )
 
@@ -590,7 +607,7 @@ async def ng_answers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             query.message.chat_id,
             loading_msg_id,
             context,
-            f"❌ <b>Ошибка при обработке 'Ответы в работе':</b>\n<code>{str(e)}</code>"
+            f"❌ <b>Ошибка при обработке 'Ответы в работе':</b>\n👤 Запрос от {user_name}\n<code>{str(e)}</code>"
         )
 
         # Ждем и удаляем сообщение об ошибке
@@ -645,6 +662,7 @@ def choosing_time_frame_MM():
 async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка запроса на отчет 'Монитор в работе'"""
     query = update.callback_query
+    user_name = get_user_name(query.from_user)
     await query.answer()
 
     # Сохраняем chat_id до удаления сообщения
@@ -654,7 +672,7 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     loading_msg_id = await delete_message_and_show_loading(
         query,
         context,
-        "📊 Загружаю отчет 'Монитор в работе'..."
+        f"📊 Загружаю отчет 'Монитор в работе'..."
     )
 
     try:
@@ -666,7 +684,7 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             chat_id,  # Используем сохраненный chat_id
             loading_msg_id,
             context,
-            "📊 Загружаю отчет 'Монитор в работе'...\n\n📥 Выполняется выгрузка данных..."
+            f"📊 Загружаю отчет 'Монитор в работе'...\n👤 Запрос от {user_name}\n\n📥 Выполняется выгрузка данных..."
         )
 
         success = await parcing_data_MM(context, chat_id, MM_start_date, MM_end_date)
@@ -688,7 +706,7 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             chat_id,
             loading_msg_id,
             context,
-            "📊 Загружаю отчет 'Монитор в работе'...\n\n⚙️ Обрабатываю данные..."
+            f"📊 Загружаю отчет 'Монитор в работе'...\n👤 Запрос от {user_name}\n\n⚙️ Обрабатываю данные..."
         )
 
         # Находим последний загруженный файл
@@ -709,7 +727,7 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             chat_id,
             loading_msg_id,
             context,
-            "📊 Загружаю отчет 'Монитор в работе'...\n\n📤 Отправляю файлы..."
+            f"📊 Загружаю отчет 'Монитор в работе'...\n👤 Запрос от {user_name}\n\n📤 Отправляю файлы..."
         )
 
         # Отправляем PDF
@@ -739,7 +757,7 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Показываем меню (используем bot.send_message вместо query.message.reply_text)
         await context.bot.send_message(
             chat_id=chat_id,
-            text="✅ Отчет успешно сформирован и отправлен!\n\nВыберите следующую команду:",
+            text=f"✅ Отчет успешно сформирован и отправлен для {user_name}!\n\nВыберите следующую команду:",
             reply_markup=MAIN_KEYBOARD
         )
 
@@ -751,7 +769,7 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             chat_id,
             loading_msg_id,
             context,
-            f"❌ <b>Ошибка при обработке 'Монитор в работе':</b>\n<code>{str(e)}</code>"
+            f"❌ <b>Ошибка при обработке 'Монитор в работе':</b>\n👤 Запрос от {user_name}\n<code>{str(e)}</code>"
         )
 
         # Ждем и показываем меню
@@ -773,13 +791,14 @@ async def mm_monitor_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def mji_svod_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка запроса на отчет 'Свод МЖИ (НГ)'"""
     query = update.callback_query
+    user_name = get_user_name(query.from_user)
     await query.answer()
 
     # Удаляем сообщение с кнопками и показываем загрузку
     loading_msg_id = await delete_message_and_show_loading(
         query,
         context,
-        "📄 Загружаю отчет 'Свод МЖИ'..."
+        f"📄 Загружаю отчет 'Свод МЖИ'..."
     )
 
     try:
@@ -788,7 +807,7 @@ async def mji_svod_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             query.message.chat_id,
             loading_msg_id,
             context,
-            "📄 Загружаю отчет 'Свод МЖИ'...\n\n📥 Выполняется выгрузка данных..."
+            f"📄 Загружаю отчет 'Свод МЖИ'...\n👤 Запрос от {user_name}\n\n📥 Выполняется выгрузка данных..."
         )
 
         processed_count = await parcing_MWI(context, query.message.chat_id)
@@ -798,7 +817,7 @@ async def mji_svod_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             query.message.chat_id,
             loading_msg_id,
             context,
-            "📄 Загружаю отчет 'Свод МЖИ'...\n\n⚙️ Обрабатываю данные..."
+            f"📄 Загружаю отчет 'Свод МЖИ'...\n👤 Запрос от {user_name}\n\n⚙️ Обрабатываю данные..."
         )
 
         # Получаем DataFrame
@@ -816,7 +835,7 @@ async def mji_svod_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             query.message.chat_id,
             loading_msg_id,
             context,
-            "📄 Загружаю отчет 'Свод МЖИ'...\n\n📊 Создаю сводную таблицу и PDF..."
+            f"📄 Загружаю отчет 'Свод МЖИ'...\n👤 Запрос от {user_name}\n\n📊 Создаю сводную таблицу и PDF..."
         )
 
         # Используем функцию из модуля
@@ -831,7 +850,7 @@ async def mji_svod_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             query.message.chat_id,
             loading_msg_id,
             context,
-            "📄 Загружаю отчет 'Свод МЖИ'...\n\n📤 Отправляю файлы..."
+            f"📄 Загружаю отчет 'Свод МЖИ'...\n👤 Запрос от {user_name}\n\n📤 Отправляю файлы..."
         )
 
         # Отправляем Excel файл
@@ -864,10 +883,10 @@ async def mji_svod_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             message_id=loading_msg_id
         )
 
-        # Показываем меню
+        # Показываем меню с именем пользователя
         await context.bot.send_message(
             chat_id=query.message.chat_id,
-            text=f"✅ Отчет успешно сформирован и отправлен! (время выгрузки: {current_time})\n\nВыберите следующую команду:",
+            text=f"✅ Отчет успешно сформирован и отправлен для {user_name}!\n(время выгрузки: {current_time})\n\nВыберите следующую команду:",
             reply_markup=MAIN_KEYBOARD
         )
 
@@ -879,7 +898,7 @@ async def mji_svod_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             query.message.chat_id,
             loading_msg_id,
             context,
-            f"❌ <b>Ошибка при обработке 'Свод МЖИ':</b>\n<code>{str(e)}</code>"
+            f"❌ <b>Ошибка при обработке 'Свод МЖИ':</b>\n👤 Запрос от {user_name}\n<code>{str(e)}</code>"
         )
 
         # Ждем и показываем меню
@@ -900,9 +919,11 @@ async def mji_svod_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def week_svod_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка запроса на еженедельный свод"""
     query = update.callback_query
+    user_name = get_user_name(query.from_user)
     await query.answer()
 
     request_text = (
+        f"👤 Запрос от {user_name}\n\n"
         "*Введите две даты через пробел в формате дд.мм.гггг:*\n"
         "(например, *01.01.2022* *31.01.2022*)\n\n"
         "_Пожалуйста, убедитесь, что даты введены корректно, чтобы избежать ошибок в обработке._"
@@ -929,6 +950,8 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not context.user_data.get('waiting_for_dates', False):
         return
 
+    user = update.effective_user
+    user_name = get_user_name(user)
     user_message = update.message.text.strip()
     parts = user_message.split()
 
@@ -936,7 +959,7 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if len(parts) != 2:
         await update.message.reply_text(
-            '❌ Пожалуйста, введите ровно две даты через пробел.',
+            f'❌ {user_name}, пожалуйста, введите ровно две даты через пробел.',
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -945,7 +968,7 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if not re.match(DATE_REGEX, date1) or not re.match(DATE_REGEX, date2):
         await update.message.reply_text(
-            '❌ Неверный формат даты. Пожалуйста, используйте формат дд.мм.гггг.',
+            f'❌ {user_name}, неверный формат даты. Пожалуйста, используйте формат дд.мм.гггг.',
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -955,7 +978,7 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         datetime.strptime(date2, '%d.%m.%Y')
     except ValueError:
         await update.message.reply_text(
-            '❌ Одна или обе даты некорректны. Проверьте правильность ввода.',
+            f'❌ {user_name}, одна или обе даты некорректны. Проверьте правильность ввода.',
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -965,7 +988,7 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # Показываем сообщение о начале выгрузки
     loading_msg = await update.message.reply_text(
-        "⏳ Выгружаю данные с портала...\nПримерное время ожидания 1-2 минуты"
+        f"⏳ {user_name}, выгружаю данные с портала...\nПримерное время ожидания 1-2 минуты"
     )
 
     try:
@@ -977,7 +1000,7 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await context.bot.edit_message_text(
             chat_id=update.message.chat_id,
             message_id=loading_msg.message_id,
-            text="⏳ Выгружаю данные с портала...\n\n📥 Соединение с порталом..."
+            text=f"⏳ {user_name}, выгружаю данные с портала...\n\n📥 Соединение с порталом..."
         )
 
         success = await parcing_data_MM_async(start_date, end_date)
@@ -986,7 +1009,7 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await context.bot.edit_message_text(
                 chat_id=update.message.chat_id,
                 message_id=loading_msg.message_id,
-                text="❌ Ошибка при выгрузке данных с портала"
+                text=f"❌ {user_name}, ошибка при выгрузке данных с портала"
             )
             context.user_data['waiting_for_dates'] = False
             return
@@ -995,7 +1018,7 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await context.bot.edit_message_text(
             chat_id=update.message.chat_id,
             message_id=loading_msg.message_id,
-            text="✅ Данные успешно выгружены с портала!\n\n📤Отправьте городскую выгрузку (Excel файл)\n\nФайл будет обработан автоматически"
+            text=f"✅ {user_name}, данные успешно выгружены с портала!\n\n📤Отправьте городскую выгрузку (Excel файл)\n\nФайл будет обработан автоматически"
         )
 
         # Устанавливаем состояние ожидания файла от пользователя
@@ -1010,7 +1033,7 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await context.bot.edit_message_text(
             chat_id=update.message.chat_id,
             message_id=loading_msg.message_id,
-            text=f"❌ Ошибка при выгрузке: {str(e)[:100]}..."
+            text=f"❌ {user_name}, ошибка при выгрузке: {str(e)[:100]}..."
         )
         context.user_data['waiting_for_dates'] = False
 
@@ -1018,6 +1041,9 @@ async def handle_dates_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # Обработчик файлов от пользователя
 async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка загрузки файлов от пользователя"""
+    
+    user = update.effective_user
+    user_name = get_user_name(user)
 
     # Проверяем, если это файл для ОАТИ
     if context.user_data.get('waiting_for_oati_file', False):
@@ -1034,7 +1060,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
         file_name = update.message.document.file_name.lower()
         if not (file_name.endswith('.xlsx') or file_name.endswith('.xls')):
             await update.message.reply_text(
-                "❌ Пожалуйста, отправьте файл в формате Excel (.xlsx или .xls)",
+                f"❌ {user_name}, пожалуйста, отправьте файл в формате Excel (.xlsx или .xls)",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
@@ -1051,7 +1077,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
             # Отправляем подтверждение получения файла
             file_received_msg = await update.message.reply_text(
-                "✅ Файл получен. Обрабатываю данные...",
+                f"✅ {user_name}, файл получен. Обрабатываю данные...",
                 parse_mode=ParseMode.MARKDOWN
             )
 
@@ -1059,7 +1085,9 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await file.download_to_drive(user_file_path)
 
             # Показываем анимацию загрузки
-            loading_msg = await update.message.reply_text("🔄 Обрабатываю данные...")
+            loading_msg = await update.message.reply_text(
+                f"🔄 {user_name}, обрабатываю данные..."
+            )
 
             try:
                 # Получаем сохраненные даты
@@ -1068,7 +1096,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await context.bot.edit_message_text(
                     chat_id=update.message.chat_id,
                     message_id=loading_msg.message_id,
-                    text="🔄 Нахожу файлы для обработки..."
+                    text=f"🔄 {user_name}, нахожу файлы для обработки..."
                 )
 
                 # Находим последний скачанный файл с портала
@@ -1085,7 +1113,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await context.bot.edit_message_text(
                     chat_id=update.message.chat_id,
                     message_id=loading_msg.message_id,
-                    text="⚙️ Обрабатываю файлы..."
+                    text=f"⚙️ {user_name}, обрабатываю файлы..."
                 )
 
                 # Обрабатываем оба файла
@@ -1094,7 +1122,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await context.bot.edit_message_text(
                     chat_id=update.message.chat_id,
                     message_id=loading_msg.message_id,
-                    text="📤 Отправляю файл (это может занять некоторое время)..."
+                    text=f"📤 {user_name}, отправляю файл (это может занять некоторое время)..."
                 )
 
                 current_time = datetime.now().strftime('%d.%m.%Y %H:%M')
@@ -1116,7 +1144,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     logger.warning("Таймаут при отправке файла, но операция могла завершиться успешно")
                     # Проверяем, отправлен ли файл
                     await update.message.reply_text(
-                        "⏳ Файл обрабатывается... Проверяю статус отправки..."
+                        f"⏳ {user_name}, файл обрабатывается... Проверяю статус отправки..."
                     )
 
                 # Удаляем сообщение о загрузке и инструкцию
@@ -1149,9 +1177,9 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 except Exception as e:
                     logger.warning(f"Не удалось удалить сообщение о загрузке: {e}")
 
-                # Показываем меню
+                # Показываем меню с именем пользователя
                 await update.message.reply_text(
-                    f"✅ Отчет успешно сформирован и отправлен!\n\nВыберите следующую команду:",
+                    f"✅ Отчет успешно сформирован и отправлен для {user_name}!\n\nВыберите следующую команду:",
                     reply_markup=MAIN_KEYBOARD
                 )
 
@@ -1173,7 +1201,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await context.bot.edit_message_text(
                     chat_id=update.message.chat_id,
                     message_id=loading_msg.message_id,
-                    text="⏳ Операция заняла слишком много времени, но файл мог быть отправлен. Проверьте чат."
+                    text=f"⏳ {user_name}, операция заняла слишком много времени, но файл мог быть отправлен. Проверьте чат."
                 )
 
                 await update.message.reply_text(
@@ -1190,7 +1218,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await context.bot.edit_message_text(
                     chat_id=update.message.chat_id,
                     message_id=loading_msg.message_id,
-                    text=f"❌ Ошибка при обработке: {str(e)[:100]}..."
+                    text=f"❌ {user_name}, ошибка при обработке: {str(e)[:100]}..."
                 )
 
                 await update.message.reply_text(
@@ -1204,7 +1232,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     else:
         await update.message.reply_text(
-            '❌ Пожалуйста, отправьте документ.',
+            f'❌ {user_name}, пожалуйста, отправьте документ.',
             parse_mode=ParseMode.MARKDOWN
         )
 
@@ -1213,13 +1241,14 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def oati_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка запроса на создание слайда ОАТИ"""
     query = update.callback_query
+    user_name = get_user_name(query.from_user)
     await query.answer()
 
     # Удаляем сообщение с кнопками и показываем загрузку
     loading_msg_id = await delete_message_and_show_loading(
         query,
         context,
-        "🅾️ Создаю слайд ОАТИ..."
+        f"🅾️ Создаю слайд ОАТИ..."
     )
 
     try:
@@ -1228,7 +1257,7 @@ async def oati_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             query.message.chat_id,
             loading_msg_id,
             context,
-            "🅾️ Создаю слайд ОАТИ...\n\n📤 Пришлите выгрузку для создания слайда ОАТИ"
+            f"🅾️ Создаю слайд ОАТИ...\n👤 Запрос от {user_name}\n\n📤 Пришлите выгрузку для создания слайда ОАТИ"
         )
 
         # Устанавливаем состояние ожидания файла ОАТИ
@@ -1247,9 +1276,12 @@ async def oati_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def handle_oati_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка файлов ОАТИ"""
+    user = update.effective_user
+    user_name = get_user_name(user)
+    
     if not update.message.document:
         await update.message.reply_text(
-            '❌ Пожалуйста, отправьте документ.',
+            f'❌ {user_name}, пожалуйста, отправьте документ.',
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -1260,7 +1292,7 @@ async def handle_oati_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     file_name = update.message.document.file_name.lower()
     if not (file_name.endswith('.xlsx') or file_name.endswith('.xls')):
         await update.message.reply_text(
-            "❌ Пожалуйста, отправьте файл в формате Excel (.xlsx или .xls)",
+            f"❌ {user_name}, пожалуйста, отправьте файл в формате Excel (.xlsx или .xls)",
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -1271,7 +1303,7 @@ async def handle_oati_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         loading_msg_id = await show_loading_animation(
             update.message.chat_id,
             context,
-            "🅾️ Обрабатываю файл ОАТИ..."
+            f"🅾️ {user_name}, обрабатываю файл ОАТИ..."
         )
 
     try:
@@ -1279,7 +1311,7 @@ async def handle_oati_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             update.message.chat_id,
             loading_msg_id,
             context,
-            "🅾️ Обрабатываю файл ОАТИ...\n\n📥 Скачиваю файл..."
+            f"🅾️ {user_name}, обрабатываю файл ОАТИ...\n\n📥 Скачиваю файл..."
         )
 
         # Создаем временную директорию
@@ -1294,7 +1326,7 @@ async def handle_oati_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             update.message.chat_id,
             loading_msg_id,
             context,
-            "🅾️ Обрабатываю файл ОАТИ...\n\n⚙️ Анализирую данные..."
+            f"🅾️ {user_name}, обрабатываю файл ОАТИ...\n\n⚙️ Анализирую данные..."
         )
 
         # Обрабатываем файл (теперь функция возвращает 3 значения)
@@ -1304,7 +1336,7 @@ async def handle_oati_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             update.message.chat_id,
             loading_msg_id,
             context,
-            "🅾️ Обрабатываю файл ОАТИ...\n\n📤 Отправляю файлы..."
+            f"🅾️ {user_name}, обрабатываю файл ОАТИ...\n\n📤 Отправляю файлы..."
         )
 
         # Отправляем PPT файл
@@ -1312,7 +1344,7 @@ async def handle_oati_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await context.bot.send_document(
                 chat_id=update.message.chat_id,
                 document=InputFile(ppt_file, filename=os.path.basename(ppt_path)),
-                caption="🅾️ Слайд ОАТИ (PowerPoint)"
+                caption=f"🅾️ Слайд ОАТИ для {user_name}"
             )
 
         # ОТПРАВЛЯЕМ СТАТИСТИЧЕСКОЕ СООБЩЕНИЕ
@@ -1328,9 +1360,9 @@ async def handle_oati_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             message_id=loading_msg_id
         )
 
-        # Показываем меню
+        # Показываем меню с именем пользователя
         await update.message.reply_text(
-            "✅ Слайд ОАТИ успешно создан и отправлен!\n\nВыберите следующую команду:",
+            f"✅ Слайд ОАТИ успешно создан и отправлен для {user_name}!\n\nВыберите следующую команду:",
             reply_markup=MAIN_KEYBOARD
         )
 
@@ -1352,7 +1384,7 @@ async def handle_oati_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 update.message.chat_id,
                 loading_msg_id,
                 context,
-                f"❌ Ошибка при обработке файла ОАТИ: {str(e)[:100]}..."
+                f"❌ {user_name}, ошибка при обработке файла ОАТИ: {str(e)[:100]}..."
             )
 
         await update.message.reply_text(
