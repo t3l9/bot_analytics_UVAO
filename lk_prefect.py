@@ -194,74 +194,93 @@ def process_lk_prefekta_file(directory: str, selected_district: str, filepath: s
     print(f"Saving processed file to: {processed_file_path}")
     df_filtered.to_excel(processed_file_path, index=False)
     excel_file = processed_file_path
-    vba_macro = """  
-            Sub CreatePivotTable()  
-                Dim wsData As Worksheet  
-                Dim wsPivot As Worksheet  
-                Dim pivotCache As PivotCache  
-                Dim pivotTable As PivotTable  
-                Dim lastRow As Long  
-                Dim lastCol As Long  
+vba_macro = """
+    Sub CreatePivotTable()
+    Dim wsData As Worksheet
+    Dim wsPivot As Worksheet
+    Dim pivotCache As PivotCache
+    Dim pivotTable As PivotTable
+    Dim lastRow As Long
+    Dim lastCol As Long
+    Dim pf As PivotField
 
-                ' Укажите лист с данными  
-                Set wsData = ThisWorkbook.Sheets("Sheet1") ' Замените на имя вашего листа с данными  
+    Set wsData = ThisWorkbook.Sheets("Sheet1")
+    With wsData.Columns("B")
+        .NumberFormat = "DD.MM.YYYY"
+    End With
 
-                With wsData.Columns("B")
-                    .NumberFormat = "DD.MM.YYYY"
-                End With
+    On Error Resume Next
+    Application.DisplayAlerts = False
+    ThisWorkbook.Sheets("Сводная таблица").Delete
+    Application.DisplayAlerts = True
+    On Error GoTo 0
+    Set wsPivot = ThisWorkbook.Sheets.Add
+    wsPivot.Name = "Сводная таблица"
 
-                ' Создаем новый лист для сводной таблицы  
-                On Error Resume Next  
-                Application.DisplayAlerts = False  
-                ThisWorkbook.Sheets("Сводная таблица").Delete ' Удаляем лист, если уже существует  
-                Application.DisplayAlerts = True  
-                On Error GoTo 0  
-                Set wsPivot = ThisWorkbook.Sheets.Add  
-                wsPivot.Name = "Сводная таблица"  
+    lastRow = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
+    lastCol = wsData.Cells(1, wsData.Columns.Count).End(xlToLeft).Column
 
-                ' Находим последний заполненный ряд и столбец на листе с данными  
-                lastRow = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row  
-                lastCol = wsData.Cells(1, wsData.Columns.Count).End(xlToLeft).Column  
+    Set pivotCache = ThisWorkbook.PivotCaches.Create( _
+        SourceType:=xlDatabase, _
+        SourceData:=wsData.Cells(1, 1).Resize(lastRow, lastCol))
 
-                ' Создаем кэш для сводной таблицы  
-                Set pivotCache = ThisWorkbook.PivotCaches.Create( _  
-                    SourceType:=xlDatabase, _  
-                    SourceData:=wsData.Cells(1, 1).Resize(lastRow, lastCol))  
+    Set pivotTable = pivotCache.CreatePivotTable( _
+        TableDestination:=wsPivot.Cells(3, 1), _
+        TableName:="MyPivotTable")
 
-                ' Создаем сводную таблицу  
-                Set pivotTable = pivotCache.CreatePivotTable( _  
-                    TableDestination:=wsPivot.Cells(3, 1), _  
-                    TableName:="MyPivotTable")  
+    ' Район в столбцы, Даты в строки
+    With pivotTable
+        .PivotFields("Район").Orientation = xlColumnField
+        .PivotFields("Регламентный срок у сообщения (Портал)").Orientation = xlRowField
+        .AddDataField .PivotFields("Номер заявки"), "Количество", xlCount
+        .RowAxisLayout xlTabularRow
+    End With
 
-                With pivotTable  
-                    .PivotFields("Район").Orientation = xlRowField  
-                    .PivotFields("Регламентный срок у сообщения (Портал)").Orientation = xlColumnField  
-                    .AddDataField .PivotFields("Номер заявки"), "Количество", xlCount  
-                End With  
+    wsPivot.Range("A4").Value = "Дата"
+    wsPivot.Rows(3).Hidden = True
+    pivotTable.RefreshTable
 
-                wsPivot.Range("A4").Value = "Район" 
-                ' Скрываем первую строку  
-                wsPivot.Rows(3).Hidden = True  
+    ' Форматирование всей таблицы
+    Dim rng As Range
+    Set rng = wsPivot.Range("A4").CurrentRegion
+    With rng
+        .Font.Name = "Times New Roman"
+        .Font.Size = 10
+        .Font.Bold = True
+        .Borders.LineStyle = xlContinuous
+        .WrapText = True
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+    End With
 
-                ' Обновляем сводную таблицу  
-                pivotTable.RefreshTable  
+    ' --- ИЗМЕНЕНИЕ: Форматирование заголовков с районами ---
+    On Error Resume Next
+    Set pf = pivotTable.PivotFields("Район")
+    If Not pf Is Nothing Then
+        With pf.LabelRange
+            .HorizontalAlignment = xlCenter      ' По центру
+            .VerticalAlignment = xlCenter        ' По вертикали по центру
+            .WrapText = True                     ' Перенос текста
+            .Font.Name = "Times New Roman"
+            .Font.Bold = True
+            .Font.Size = 10
+        End With
+        ' Автоподбор ширины столбцов с районами
+        pf.LabelRange.EntireColumn.AutoFit
+    End If
+    On Error GoTo 0
 
-                ' Форматирование сводной таблицы  
-                Dim rng As Range  
-                Set rng = wsPivot.Range("A4").CurrentRegion  
-                With rng  
-                    .Font.Name = "Times New Roman"  
-                    .Font.Size = 14  
-                    .Font.Bold = True  
-                    .Borders.LineStyle = xlContinuous  
-                    .WrapText = True ' Перенос текста  
-                    .HorizontalAlignment = xlCenter ' Выравнивание по центру  
-                End With  
-                wsPivot.Columns("A").ColumnWidth = 24 ' Установите желаемую ширину столбца  
-                wsPivot.Rows(6).RowHeight = 19 ' Установите высоту 6-й строки
+    wsPivot.Columns("A").ColumnWidth = 12
+    wsPivot.Rows(6).RowHeight = 19
 
-            End Sub
-            """
+    ' Настройки печати
+    With wsPivot.PageSetup
+        .FitToPagesWide = 1
+        .FitToPagesTall = False
+        .Orientation = xlLandscape
+    End With
+    End Sub
+    """
     # Запускаем Excel
     excel = win32com.client.Dispatch('Excel.Application')
     excel.Visible = True  # Если нужно, чтобы Excel не отображался, оставьте False
