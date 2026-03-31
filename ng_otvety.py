@@ -155,7 +155,8 @@ def process_ng_prosroki_file(timenow, filepath, excluded_dates):
     # Создаем столбец 'Район' для ВСЕХ записей сразу по маппингу
     df['Район'] = df['Ответственный ОИВ первого уровня'].map(responsible_mapping)
 
-    valid_organizations = set(responsible_mapping.keys())
+    valid_organizations = list(responsible_mapping.keys())
+    valid_organizations.append('Префектура Юго-Восточного округа')
     df = df[df['Ответственный за подготовку ответа'].isin(valid_organizations)]
     # --- ИЗМЕНЕНИЕ КОНЕЦ ---
 
