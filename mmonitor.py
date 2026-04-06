@@ -580,6 +580,36 @@ Sub CreatePivotTable1()
         .HorizontalAlignment = xlCenter ' Выравнивание по центру
         .VerticalAlignment = xlCenter
     End With
+    
+    ' ПЕРЕСТАНОВКА СТОЛБЦОВ: меняем местами столбцы B и C (2-й и 3-й)
+    On Error Resume Next
+    If wsPivot.Range("B4").Value <> "" And wsPivot.Range("C4").Value <> "" Then
+        ' Меняем заголовки
+        Dim tempHeader As Variant
+        tempHeader = wsPivot.Range("B4").Value
+        wsPivot.Range("B4").Value = wsPivot.Range("C4").Value
+        wsPivot.Range("C4").Value = tempHeader
+        
+        ' Меняем ширину столбцов
+        Dim tempColWidth As Double
+        tempColWidth = wsPivot.Columns("B").ColumnWidth
+        wsPivot.Columns("B").ColumnWidth = wsPivot.Columns("C").ColumnWidth
+        wsPivot.Columns("C").ColumnWidth = tempColWidth
+        
+        ' Меняем данные (с 5 строки и до последней)
+        Dim lastDataRow As Long
+        lastDataRow = wsPivot.Cells(wsPivot.Rows.Count, "B").End(xlUp).Row
+        
+        Dim rowIndex As Long
+        Dim tempData As Variant
+        For rowIndex = 5 To lastDataRow
+            tempData = wsPivot.Cells(rowIndex, 2).Value
+            wsPivot.Cells(rowIndex, 2).Value = wsPivot.Cells(rowIndex, 3).Value
+            wsPivot.Cells(rowIndex, 3).Value = tempData
+        Next rowIndex
+    End If
+    On Error GoTo 0
+    
     wsPivot.Columns("A").ColumnWidth = 24 ' Установите желаемую ширину столбца
     With rng
         .HorizontalAlignment = xlCenter ' Горизонтальное выравнивание по центру
@@ -600,9 +630,9 @@ Sub CreatePivotTable1()
             foundTodayColumn = True 
             cell.Font.Color = RGB(255, 0, 0) ' Красный цвет текста заголовка
             Dim dataRange As Range
-            Dim lastDataRow As Long
-            lastDataRow = wsPivot.Cells(wsPivot.Rows.Count, cell.Column).End(xlUp).Row - 1 ' Уменьшаем на одну строку для исключения итогов
-            Set dataRange = wsPivot.Range(cell.Offset(1, 0), wsPivot.Cells(lastDataRow, cell.Column))
+            Dim lastDataRow2 As Long
+            lastDataRow2 = wsPivot.Cells(wsPivot.Rows.Count, cell.Column).End(xlUp).Row - 1 ' Уменьшаем на одну строку для исключения итогов
+            Set dataRange = wsPivot.Range(cell.Offset(1, 0), wsPivot.Cells(lastDataRow2, cell.Column))
             ' Применяем заливку к значениям > 0, исключая итоги
             For Each dataCell In dataRange
                 If IsNumeric(dataCell.Value) And dataCell.Value > 0 Then
