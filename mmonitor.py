@@ -568,19 +568,6 @@ Sub CreatePivotTable1()
     ' Обновляем сводную таблицу
     pivotTable.RefreshTable
 
-    ' Форматирование сводной таблицы
-    Dim rng As Range
-    Set rng = wsPivot.Range("A4").CurrentRegion
-    With rng
-        .Font.Name = "Times New Roman"
-        .Font.Size = 14
-        .Font.Bold = True
-        .Borders.LineStyle = xlContinuous
-        .WrapText = True ' Перенос текста
-        .HorizontalAlignment = xlCenter ' Выравнивание по центру
-        .VerticalAlignment = xlCenter
-    End With
-    
     ' ПЕРЕСТАНОВКА СТОЛБЦОВ: меняем местами столбцы B и C (2-й и 3-й)
     On Error Resume Next
     If wsPivot.Range("B4").Value <> "" And wsPivot.Range("C4").Value <> "" Then
@@ -589,12 +576,6 @@ Sub CreatePivotTable1()
         tempHeader = wsPivot.Range("B4").Value
         wsPivot.Range("B4").Value = wsPivot.Range("C4").Value
         wsPivot.Range("C4").Value = tempHeader
-        
-        ' Меняем ширину столбцов
-        Dim tempColWidth As Double
-        tempColWidth = wsPivot.Columns("B").ColumnWidth
-        wsPivot.Columns("B").ColumnWidth = wsPivot.Columns("C").ColumnWidth
-        wsPivot.Columns("C").ColumnWidth = tempColWidth
         
         ' Меняем данные (с 5 строки и до последней)
         Dim lastDataRow As Long
@@ -609,6 +590,19 @@ Sub CreatePivotTable1()
         Next rowIndex
     End If
     On Error GoTo 0
+
+    ' Форматирование сводной таблицы
+    Dim rng As Range
+    Set rng = wsPivot.Range("A4").CurrentRegion
+    With rng
+        .Font.Name = "Times New Roman"
+        .Font.Size = 14
+        .Font.Bold = True
+        .Borders.LineStyle = xlContinuous
+        .WrapText = True ' Перенос текста
+        .HorizontalAlignment = xlCenter ' Выравнивание по центру
+        .VerticalAlignment = xlCenter
+    End With
     
     wsPivot.Columns("A").ColumnWidth = 24 ' Установите желаемую ширину столбца
     With rng
