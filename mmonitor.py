@@ -44,7 +44,6 @@ from openpyxl.formatting.rule import CellIsRule
 import win32com.client
 import pythoncom
 
-
 home_dir = os.path.expanduser("~")
 directory = os.path.join(home_dir, "Downloads")
 # Загружаем переменные из .env
@@ -161,6 +160,8 @@ async def parcing_data_MM(context, chat_id, MM_start_date, MM_end_date):
         return False
     finally:
         driver.quit()
+
+
 def choosing_time_MM():
     today = datetime.now()
     current_date = pd.Timestamp(datetime.now().date())
@@ -186,63 +187,123 @@ def choosing_time_MM():
     elif (today > eight_pm_today) & (today < eleven_pm_today):
         timenow = "НОЧЬ"
     return timenow
+
+
+# def first_attribute(df):
+#     today = datetime.now()
+#     weekday = today.weekday()
+#     # Определяем начало и конец текущей недели
+#     start_of_week = today - timedelta(days=weekday)
+#     end_of_week = start_of_week + timedelta(days=6)
+#     # Фильтруем DataFrame в соответствии с требуемой логикой
+#     if weekday == 0:
+#         df.loc[(df['Просрок'] == 'Да') & (df['Статус в системе'] == 'Устранено')
+#                & (df[
+#                       'Срок устранения до'].dt.date == today.date()), "ТипСПросроком"] = "Устранено с нарушением срока " + today.strftime(
+#             "%d.%m.%y") + " (На текущей уб. неделе)"
+# 
+#     elif weekday == 1:
+#         start_day = start_of_week + timedelta(days=(weekday - 1))
+#         end_day = today
+#         df.loc[(df['Срок устранения до'].dt.date >= start_day.date()) &
+#                (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
+#                (df[
+#                     'Статус в системе'] == 'Устранено'), "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
+#             "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
+# 
+#     elif weekday == 2:
+#         start_day = start_of_week + timedelta(days=(weekday - 2))
+#         end_day = today
+#         df.loc[(df['Срок устранения до'].dt.date >= start_day.date()) &
+#                (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
+#                (df[
+#                     'Статус в системе'] == 'Устранено'), "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
+#             "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
+# 
+#     elif weekday == 3:
+#         start_day = start_of_week + timedelta(days=(weekday - 3))
+#         end_day = today
+#         df.loc[(df['Срок устранения до'].dt.date >= start_day.date()) &
+#                (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
+#                (df[
+#                     'Статус в системе'] == 'Устранено'), "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
+#             "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
+# 
+#     elif weekday == 4:
+#         start_day = start_of_week + timedelta(days=(weekday - 4))
+#         end_day = today
+#         df.loc[(df['Срок устранения до'].dt.date >= start_day.date()) &
+#                (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
+#                (df[
+#                     'Статус в системе'] == 'Устранено'), "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
+#             "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
+# 
+#     elif weekday == 5:
+#         start_day = start_of_week + timedelta(days=(weekday - 5))
+#         end_day = today
+#         df.loc[(df['Срок устранения до'].dt.date >= start_day.date()) &
+#                (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
+#                (df[
+#                     'Статус в системе'] == 'Устранено'), "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
+#             "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
+# 
+#     elif weekday == 6:
+#         start_day = today - timedelta(days=6)
+#         end_day = today
+#         df.loc[(df['Просрок'] == 'Да') & (df['Статус в системе'] == 'Устранено') & (
+#                 df['Срок устранения до'].dt.date >= start_day.date()) &
+#                (df['Срок устранения до'].dt.date <= end_day.date()), "ТипСПросроком"] = (
+#                                                                                                 "Устранено с нарушением срока " + start_day.strftime(
+#                                                                                             "%d.%m.%y") + " по " + today.strftime(
+#                                                                                             "%d.%m.%y")) + " (На текущей уб. неделе)"
+
 def first_attribute(df):
     today = datetime.now()
     weekday = today.weekday()
     # Определяем начало и конец текущей недели
     start_of_week = today - timedelta(days=weekday)
     end_of_week = start_of_week + timedelta(days=6)
-    # Фильтруем DataFrame в соответствии с требуемой логикой
+
+    # Общие условия для всех случаев
+    base_conditions = (df['Просрок'] == 'Да') & (df['Статус в системе'] == 'Устранено')
+
     if weekday == 0:
-        df.loc[(df['Просрок'] == 'Да') & (df['Статус в системе'] == 'Устранено')
-           & (df[
-                  'Срок устранения до'].dt.date == today.date()), "ТипСПросроком"] = "Устранено с нарушением срока " + today.strftime(
-        "%d.%m.%y") + " (На текущей уб. неделе)"
-    elif weekday == 1:
-        start_day = start_of_week + timedelta(days=(weekday - 1))
+        # В понедельник включаем только записи за сегодня
+        date_condition = (df['Срок устранения до'].dt.date == today.date())
+        df.loc[base_conditions & date_condition, "ТипСПросроком"] = "Устранено с нарушением срока " + today.strftime(
+            "%d.%m.%y") + " (На текущей уб. неделе)"
+
+    elif weekday in [1, 2, 3, 4, 5]:
+        # Для вторника-субботы: от start_day до today ИЛИ раньше start_day
+        start_day = start_of_week + timedelta(days=(weekday - (weekday if weekday <= 5 else 5)))
         end_day = today
-        df.loc[(df['Срок устранения до'].dt.date >= start_day.date()) &
-               (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
-               (df[
-                    'Статус в системе'] == 'Устранено'), "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
+
+        # Условие: срок устранения в диапазоне [start_day, today] ИЛИ раньше start_day
+        date_condition = ((df['Срок устранения до'].dt.date >= start_day.date()) &
+                          (df['Срок устранения до'].dt.date <= end_day.date())) | \
+                         (df['Срок устранения до'].dt.date < start_day.date())
+
+        df.loc[
+            base_conditions & date_condition, "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
             "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
-    elif weekday == 2:
-        start_day = start_of_week + timedelta(days=(weekday - 2))
-        end_day = today
-        df.loc[(df['Срок устранения до'].dt.date >= start_day.date()) &
-               (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
-               (df[
-                    'Статус в системе'] == 'Устранено'), "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
-            "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
-    elif weekday == 3:
-        start_day = start_of_week + timedelta(days=(weekday - 3))
-        end_day = today
-        df.loc[(df['Срок устранения до'].dt.date >= start_day.date()) &
-               (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
-               (df[
-                    'Статус в системе'] == 'Устранено'), "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
-            "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
-    elif weekday == 4:
-        start_day = start_of_week + timedelta(days=(weekday - 4))
-        end_day = today
-        df.loc[(df['Срок устранения до'].dt.date >= start_day.date()) &
-               (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
-               (df[
-                    'Статус в системе'] == 'Устранено'), "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
-            "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
-    elif weekday == 5:
-        start_day = start_of_week + timedelta(days=(weekday - 5))
-        end_day = today
-        df.loc[(df['Срок устранения до'].dt.date >= start_day.date()) &
-               (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
-               (df[
-                    'Статус в системе'] == 'Устранено'), "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
-            "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
+
     elif weekday == 6:
+        # Для воскресенья: за последние 7 дней ИЛИ раньше
         start_day = today - timedelta(days=6)
         end_day = today
-        df.loc[(df['Просрок'] == 'Да') & (df['Статус в системе'] == 'Устранено') & (df['Срок устранения до'].dt.date >= start_day.date()) &
-               (df['Срок устранения до'].dt.date <= end_day.date()), "ТипСПросроком"] = ("Устранено с нарушением срока " + start_day.strftime("%d.%m.%y") + " по " + today.strftime("%d.%m.%y")) + " (На текущей уб. неделе)"
+
+        # Условие: срок устранения в диапазоне [start_day, today] ИЛИ раньше start_day
+        date_condition = ((df['Срок устранения до'].dt.date >= start_day.date()) &
+                          (df['Срок устранения до'].dt.date <= end_day.date())) | \
+                         (df['Срок устранения до'].dt.date < start_day.date())
+
+        df.loc[
+            base_conditions & date_condition, "ТипСПросроком"] = "Устранено с нарушением срока " + start_day.strftime(
+            "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (На текущей уб. неделе)"
+
+    return df
+
+
 def second_attribute(df):
     today = datetime.now()
     weekday = today.weekday()
@@ -303,6 +364,8 @@ def second_attribute(df):
                (df['Срок устранения до'].dt.date <= end_day.date()) & (df['Просрок'] == 'Да') &
                (df['Статус в системе'] == 'В работе'), "ТипСПросроком"] = "В работе с просроком " + start_day.strftime(
             "%d.%m.%y") + " по " + today.strftime("%d.%m.%y") + " (Текущая уб. неделя)"
+
+
 def third_attribute(df):
     today = datetime.now()
     weekday = today.weekday()
@@ -316,13 +379,15 @@ def third_attribute(df):
                     'Статус в системе'] == 'В работе'), "ТипСПросроком"] = "В работе с просроком с " + start_of_last_week.strftime(
             "%d.%m.%y") + " по " + end_of_last_week.strftime("%d.%m.%y") + " (Прошедшая уб. неделя)"
     else:
-        end_of_last_week = today - timedelta(days=(weekday+1))
+        end_of_last_week = today - timedelta(days=(weekday + 1))
         start_of_last_week = end_of_last_week - timedelta(days=6)
         df.loc[(df['Срок устранения до'].dt.date >= start_of_last_week.date()) &
                (df['Срок устранения до'].dt.date <= end_of_last_week.date()) & (df['Просрок'] == 'Да') &
                (df[
                     'Статус в системе'] == 'В работе'), "ТипСПросроком"] = "В работе с просроком с " + start_of_last_week.strftime(
             "%d.%m.%y") + " по " + end_of_last_week.strftime("%d.%m.%y") + " (Прошедшая уб. неделя)"
+
+
 def fourth_attribute(df):
     today = datetime.now()
     weekday = today.weekday()
@@ -344,19 +409,23 @@ def fourth_attribute(df):
                     'Статус в системе'] == 'В работе'), "ТипСПросроком"] = "В работе с просроком с " + earliest_date.strftime(
             "%d.%m.%y") + " по " + end_of_last_week_mon.strftime("%d.%m.%y") + " (Старые)"
     else:
-        end_of_last_week = today - timedelta(days=(weekday+1))
+        end_of_last_week = today - timedelta(days=(weekday + 1))
         end_of_last_week_mon = end_of_last_week - timedelta(days=7)
         df.loc[(df['Срок устранения до'].dt.date >= earliest_date.date()) &
                (df['Срок устранения до'].dt.date <= end_of_last_week_mon.date()) & (df['Просрок'] == 'Да') &
                (df[
                     'Статус в системе'] == 'В работе'), "ТипСПросроком"] = "В работе с просроком с " + earliest_date.strftime(
             "%d.%m.%y") + " по " + end_of_last_week_mon.strftime("%d.%m.%y") + " (Старые)"
+
+
 def fifth_attribute(df):
     today = datetime.now()
     if today:
         df.loc[(df['Срок устранения до'].dt.date == today.date()) & (df['Просрок'] == 'Нет') &
                (df['Статус в системе'] == 'В работе'), "ТипБезПросрока"] = "Срок с " + pd.Timestamp(
             datetime.now()).strftime('%H:%M') + " " + today.strftime("%d.%m.%y") + " (Сегодня)"
+
+
 def sixth_attribute(df):
     today = datetime.now()
     tommorow = today + timedelta(days=1)
@@ -370,11 +439,17 @@ def sixth_attribute(df):
                        df['Обещание устранения'].dt.date <= max_date.date()) & (df['Просрок'] == 'Нет') &
                 (df['Статус в системе'] == 'В работе')), "ТипБезПросрока"] = "Срок с " + tommorow.strftime(
             "%d.%m.%y") + " по " + max_date.strftime("%d.%m.%y")
+
+
 def snow_today(df):
     today = datetime.now()
     if today:
         df.loc[(df['Дата фиксации нарушения'].dt.date == today.date()) &
-               ((df['Проблема'] == 'Наличие снега, наледи') | (df['Проблема'] == 'Неочищенная кровля')), "ТипСнег"] = "Снег " + today.strftime("%d.%m.%y") + " (Сегодня)"
+               ((df['Проблема'] == 'Наличие снега, наледи') | (
+                           df['Проблема'] == 'Неочищенная кровля')), "ТипСнег"] = "Снег " + today.strftime(
+            "%d.%m.%y") + " (Сегодня)"
+
+
 def snow_all_expect_today(df):
     today = datetime.now()
     tomorrow = today - timedelta(days=1)
@@ -434,6 +509,8 @@ def snow_all_expect_today(df):
                & (df['Дата фиксации нарушения'].dt.date <= end_day.date()), "ТипСнег"] = "Снег с " + start_day.strftime(
             "%d.%m.%y") + " по " + tomorrow.strftime(
             "%d.%m.%y") + " (Текущая уб. неделя)"
+
+
 def process_file_MM(filepath, timenow):
     df = pd.read_excel(filepath)
     # Список значений, которые должны присутствовать в столбце "Балансодержатель"
@@ -576,11 +653,11 @@ Sub CreatePivotTable1()
         tempHeader = wsPivot.Range("B4").Value
         wsPivot.Range("B4").Value = wsPivot.Range("C4").Value
         wsPivot.Range("C4").Value = tempHeader
-        
+
         ' Меняем данные (с 5 строки и до последней)
         Dim lastDataRow As Long
         lastDataRow = wsPivot.Cells(wsPivot.Rows.Count, "B").End(xlUp).Row
-        
+
         Dim rowIndex As Long
         Dim tempData As Variant
         For rowIndex = 5 To lastDataRow
@@ -603,7 +680,7 @@ Sub CreatePivotTable1()
         .HorizontalAlignment = xlCenter ' Выравнивание по центру
         .VerticalAlignment = xlCenter
     End With
-    
+
     wsPivot.Columns("A").ColumnWidth = 24 ' Установите желаемую ширину столбца
     With rng
         .HorizontalAlignment = xlCenter ' Горизонтальное выравнивание по центру
